@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Add Challenge - College CTF{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0"><i class="bi bi-plus-circle"></i> Add New Challenge</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Title *</label>
+                        <input type="text" name="title" class="form-control" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Category</label>
+                            <select name="category" class="form-select">
+                                <option>General</option>
+                                <option>Web</option>
+                                <option>Crypto</option>
+                                <option>Forensics</option>
+                                <option>OSINT</option>
+                                <option>Misc</option>
+                                <option>Reverse</option>
+                                <option>Pwn</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Points</label>
+                            <input type="number" name="points" class="form-control" value="100" min="1">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Difficulty</label>
+                            <select name="difficulty" class="form-select">
+                                <option>Easy</option>
+                                <option>Medium</option>
+                                <option>Hard</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description *</label>
+                        <textarea name="description" class="form-control" rows="6" required
+                                  placeholder="Explain the challenge here. You can include the flag for very easy intro challenges."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Flag *</label>
+                        <input type="text" name="flag" class="form-control" required
+                               placeholder="flag{something_here}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Hint (optional)</label>
+                        <input type="text" name="hint" class="form-control"
+                               placeholder="A helpful hint for beginners">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">Add Challenge</button>
+                        <a href="{{ url_for('admin') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

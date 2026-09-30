@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Admin - College CTF{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-gear-fill"></i> Admin Panel</h2>
+    <a href="{{ url_for('admin_add') }}" class="btn btn-primary">
+        <i class="bi bi-plus-lg"></i> Add Challenge
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Challenges ({{ challenges|length }})</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-dark table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Title</th>
+                            <th>Category</th>
+                            <th>Points</th>
+                            <th>Difficulty</th>
+                            <th>Visible</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in challenges %}
+                        <tr>
+                            <td>{{ c.id }}</td>
+                            <td>{{ c.title }}</td>
+                            <td>{{ c.category }}</td>
+                            <td>{{ c.points }}</td>
+                            <td>{{ c.difficulty }}</td>
+                            <td>
+                                {% if c.is_visible %}
+                                <span class="badge bg-success">Yes</span>
+                                {% else %}
+                                <span class="badge bg-secondary">No</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Users ({{ users|length }})</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-dark table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th class="text-end">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td>
+                                {{ u.username }}
+                                {% if u.is_admin %}
+                                <span class="badge bg-warning text-dark">Admin</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">{{ u.score }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
