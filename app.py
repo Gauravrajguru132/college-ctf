@@ -594,16 +594,16 @@ def admin_add():
         flash("Challenge added successfully!", "success")
         return redirect(url_for("admin"))
     return render_template("admin_add.html")
-
 if __name__ == "__main__":
     if not os.path.exists(DATABASE):
         init_db()
     else:
-        # Ensure tables exist even if db file already present
         init_db()
+    
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 50)
     print("  Beginner CTF Platform is running!")
-    print("  Open: http://127.0.0.1:5000")
+    print(f"  Port: {port}")
     print("  Admin login → username: admin  password: admin123")
     print("=" * 50)
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=port)
