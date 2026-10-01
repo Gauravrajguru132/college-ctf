@@ -1,415 +1,337 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
-import sqlite3
 import hashlib
 import os
 from datetime import datetime
 from functools import wraps
+from urllib.parse import urlparse
 
 app = Flask(__name__)
-app.secret_key = "college-ctf-secret-change-me-in-production-2026"
+app.secret_key = os.environ.get("SECRET_KEY", "college-ctf-secret-change-me-in-production-2026")
 
-DATABASE = "ctf.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def get_db():
     db = getattr(g, "_database", None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row
+        if DATABASE_URL:
+            import psycopg2
+            import psycopg2.extras
+            result = urlparse(DATABASE_URL)
+            db = g._database = psycopg2.connect(
+                database=result.path[1:],
+                user=result.username,
+                password=result.password,
+                host=result.hostname,
+                port=result.port
+            )
+            db.autocommit = True
+        else:
+            import sqlite3
+            db = g._database = sqlite3.connect("ctf.db")
+            db.row_factory = sqlite3.Row
     return db
 
-@app.teardown_appcontext
 def close_connection(exception):
     db = getattr(g, "_database", None)
     if db is not None:
         db.close()
 
+app.teardown_appcontext(close_connection)
+
+def execute(query, params=None, fetchone=False, fetchall=False):
+    db = get_db()
+    if DATABASE_URL:
+        import psycopg2.extras
+        cur = db.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        query = query.replace("?", "%s")
+        cur.execute(query, params or ())
+        if fetchone:
+            return cur.fetchone()
+        if fetchall:
+            return cur.fetchall()
+        return cur
+    else:
+        cur = db.execute(query, params or ())
+        if fetchone:
+            return cur.fetchone()
+        if fetchall:
+            return cur.fetchall()
+        db.commit()
+        return cur
+
 def init_db():
     with app.app_context():
-        db = get_db()
-        db.executescript("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL,
-                is_admin INTEGER DEFAULT 0,
-                score INTEGER DEFAULT 0,
-                created_at TEXT
-            );
+        if DATABASE_URL:
+            execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    is_admin INTEGER DEFAULT 0,
+                    score INTEGER DEFAULT 0,
+                    created_at TEXT
+                )
+            """)
+            execute("""
+                CREATE TABLE IF NOT EXISTS challenges (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    points INTEGER NOT NULL,
+                    flag TEXT NOT NULL,
+                    difficulty TEXT DEFAULT 'Easy',
+                    hint TEXT,
+                    is_visible INTEGER DEFAULT 1
+                )
+            """)
+            execute("""
+                CREATE TABLE IF NOT EXISTS solves (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    challenge_id INTEGER NOT NULL,
+                    solved_at TEXT,
+                    UNIQUE(user_id, challenge_id)
+                )
+            """)
+        else:
+            execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    is_admin INTEGER DEFAULT 0,
+                    score INTEGER DEFAULT 0,
+                    created_at TEXT
+                )
+            """)
+            execute("""
+                CREATE TABLE IF NOT EXISTS challenges (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    points INTEGER NOT NULL,
+                    flag TEXT NOT NULL,
+                    difficulty TEXT DEFAULT 'Easy',
+                    hint TEXT,
+                    is_visible INTEGER DEFAULT 1
+                )
+            """)
+            execute("""
+                CREATE TABLE IF NOT EXISTS solves (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    challenge_id INTEGER NOT NULL,
+                    solved_at TEXT,
+                    UNIQUE(user_id, challenge_id)
+                )
+            """)
 
-            CREATE TABLE IF NOT EXISTS challenges (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                category TEXT NOT NULL,
-                description TEXT NOT NULL,
-                points INTEGER NOT NULL,
-                flag TEXT NOT NULL,
-                difficulty TEXT DEFAULT 'Easy',
-                hint TEXT,
-                is_visible INTEGER DEFAULT 1
-            );
-
-            CREATE TABLE IF NOT EXISTS solves (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                challenge_id INTEGER NOT NULL,
-                solved_at TEXT,
-                UNIQUE(user_id, challenge_id),
-                FOREIGN KEY(user_id) REFERENCES users(id),
-                FOREIGN KEY(challenge_id) REFERENCES challenges(id)
-            );
-        """)
-        db.commit()
-
-        # Create default admin (username: admin, password: admin123)
-        admin_pass = hashlib.sha256("admin123".encode()).hexdigest()
-        try:
-            db.execute(
+        # Create admin if not exists
+        admin_pass = hashlib.sha256("Certified@123".encode()).hexdigest()
+        existing = execute("SELECT id FROM users WHERE username = ?", ("admin",), fetchone=True)
+        if not existing:
+            execute(
                 "INSERT INTO users (username, password, is_admin, score, created_at) VALUES (?, ?, 1, 0, ?)",
                 ("admin", admin_pass, datetime.now().isoformat())
             )
-            db.commit()
-        except sqlite3.IntegrityError:
-            pass  # admin already exists
 
-        # Insert sample beginner challenges (28 total)
+        # ========== FORCE REPLACE CHALLENGES ==========
+        # This clears old challenges and inserts the new ones
+        execute("DELETE FROM solves")
+        execute("DELETE FROM challenges")
+
         challenges = [
-            # ===== ORIGINAL 8 =====
-            (
-                "Welcome to the CTF!",
-                "General",
-                "Welcome to our college CTF!\n\nThe flag is: flag{welcome_to_college_ctf_2026}\n\nJust submit it to get your first points.",
-                10,
-                "flag{welcome_to_college_ctf_2026}",
-                "Easy",
-                "The flag is already written in the description!"
-            ),
-            (
-                "Base64 Basics",
-                "Crypto",
-                "Someone encoded a secret message using Base64.\n\nDecode this: ZmxhZ3tiYXNlNjRfaXNfZWFzeX0=\n\nTools: Use CyberChef, or Python (base64 module), or any online Base64 decoder.",
-                20,
-                "flag{base64_is_easy}",
-                "Easy",
-                "Search for 'base64 decode online' or use Python: import base64; print(base64.b64decode('...'))"
-            ),
-            (
-                "Inspect Me",
-                "Web",
-                "The flag is hidden somewhere on this page.\n\nLook carefully at the HTML source code (Right click → View Page Source or Ctrl+U).\n\nHint: Developers love to leave comments.",
-                30,
-                "flag{html_comments_are_useful}",
-                "Easy",
-                "Right-click the page → View Page Source. Look for HTML comments (<!-- ... -->)."
-            ),
-            (
-                "Caesar Salad",
-                "Crypto",
-                "Julius Caesar used a simple cipher. Shift every letter by 3 positions backwards.\n\nCiphertext: iodj{fdhvdu_flskhu_lv_ixq}\n\nExample: d → a, e → b, f → c ...",
-                30,
-                "flag{caesar_cipher_is_fun}",
-                "Easy",
-                "Try shifting each letter back by 3. Or use CyberChef 'ROT13' / 'Caesar' recipe."
-            ),
-            (
-                "Hidden in Plain Sight",
-                "Forensics",
-                "Download the file below and find the flag.\n\n(This challenge uses a text file. In a real CTF you would get an image or binary.)\n\nFile content is shown here for simplicity:\n\nThis is a normal looking text file.\nNothing suspicious here...\nJust some random words: apple banana cherry\nOh wait... flag{strings_command_rocks} is hidden between the lines.\nKeep looking!",
-                40,
-                "flag{strings_command_rocks}",
-                "Easy",
-                "Just read the description carefully. The flag is written in plain text."
-            ),
-            (
-                "Simple XOR",
-                "Crypto",
-                "The message was XORed with a single-byte key.\n\nHex ciphertext: 0a0d0a1d1b0c1a0b1c0d1b0a1d0c1b0a\n\nThe key is a single printable ASCII character (try letters a-z).\n\nPython tip:\n```python\ncipher = bytes.fromhex('0a0d0a1d1b0c1a0b1c0d1b0a1d0c1b0a')\nfor key in range(32, 127):\n    print(key, bytes([b ^ key for b in cipher]))\n```",
-                50,
-                "flag{xor_is_cool}",
-                "Medium",
-                "XOR each byte with possible keys (32-126). Look for readable text starting with 'flag{'."
-            ),
-            (
-                "Cookie Monster",
-                "Web",
-                "This challenge simulates a web cookie.\n\nImagine you have a cookie named 'role' with value 'user'.\n\nChange it to 'admin' to get the flag.\n\n(In a real challenge this would be done in browser DevTools → Application → Cookies)\n\nFor this demo, the flag is: flag{cookies_can_be_changed}",
-                40,
-                "flag{cookies_can_be_changed}",
-                "Easy",
-                "In real life: F12 → Application/Storage → Cookies. Change the value."
-            ),
-            (
-                "Google Fu",
-                "OSINT",
-                "Use your search skills.\n\nWhat is the full name of the creator of Python programming language?\n\nFormat the flag as: flag{firstname_lastname} (all lowercase)\n\nExample: flag{john_doe}",
-                25,
-                "flag{guido_van_rossum}",
-                "Easy",
-                "Just Google 'creator of Python programming language'."
-            ),
-            # ===== 20 NEW CHALLENGES =====
-            (
-                "ROT13 Fun",
-                "Crypto",
-                "ROT13 is a special case of the Caesar cipher (shift by 13).\n\nCiphertext: synt{ebg13_vf_fvzcyr}\n\nDecode it to get the flag.",
-                25,
-                "flag{rot13_is_simple}",
-                "Easy",
-                "Use CyberChef or any online ROT13 decoder. In Python: import codecs; print(codecs.decode(text, 'rot_13'))"
-            ),
-            (
-                "Binary Message",
-                "Crypto",
-                "Convert this binary to ASCII text:\n\n01100110 01101100 01100001 01100111 01111011 01100010 01101001 01101110 01100001 01110010 01111001 01011111 01101001 01110011 01011111 01100110 01110101 01101110 01111101",
-                30,
-                "flag{binary_is_fun}",
-                "Easy",
-                "Use CyberChef (From Binary) or an online binary-to-text converter."
-            ),
-            (
-                "Secret in the Source",
-                "Web",
-                "The flag is hidden in this page's HTML source code.\n\nRight-click → View Page Source (or press Ctrl+U) and search carefully.\n\n<!-- flag{developers_leave_secrets} -->",
-                35,
-                "flag{developers_leave_secrets}",
-                "Easy",
-                "Look for HTML comments that start with <!--"
-            ),
-            (
-                "Broken Hash",
-                "Crypto",
-                "This is an MD5 hash of the flag:\n\n5f4dcc3b5aa765d61d8327deb882cf99\n\nWait... that's the MD5 of the word \"password\".\n\nActually the real hash of the flag is:\n\n8f4e3c2b1a0d9e8f7c6b5a4d3e2f1a0b\n\nNo, that was a joke.\n\nThe real flag is simply: flag{md5_is_broken}",
-                40,
-                "flag{md5_is_broken}",
-                "Easy",
-                "Read the description carefully till the end."
-            ),
-            (
-                "Hexadecimal",
-                "Crypto",
-                "Decode this hexadecimal string:\n\n666c61677b6865785f6465636f64696e675f726f636b737d",
-                30,
-                "flag{hex_decoding_rocks}",
-                "Easy",
-                "Use CyberChef (From Hex) or Python: bytes.fromhex('...').decode()"
-            ),
-            (
-                "Fake QR",
-                "Misc",
-                "In a real CTF you would scan a QR code.\n\nFor this challenge, the \"QR content\" is:\n\nflag{qr_codes_are_cool}\n\nJust submit it!",
-                20,
-                "flag{qr_codes_are_cool}",
-                "Easy",
-                "The flag is written in the description."
-            ),
-            (
-                "robots.txt",
-                "Web",
-                "Websites often have a file called robots.txt that tells search engines which pages not to visit.\n\nSometimes they accidentally reveal secret paths.\n\nImagine robots.txt contains:\n\nUser-agent: *\nDisallow: /secret-admin-panel\nDisallow: /flag-here.txt\n\nAnd /flag-here.txt contains the flag: flag{robots_tell_secrets}",
-                45,
-                "flag{robots_tell_secrets}",
-                "Easy",
-                "In real life you would visit http://target/robots.txt"
-            ),
-            (
-                "Hidden Message",
-                "Forensics",
-                "Steganography is the art of hiding data inside other data (usually images).\n\nFor this beginner challenge, the hidden message is written below in plain text:\n\nThe password is flag{stego_basics}",
-                40,
-                "flag{stego_basics}",
-                "Easy",
-                "Just read the description."
-            ),
-            (
-                "Dangerous Eval",
-                "Misc",
-                "A developer wrote this dangerous Python code:\n\ncode = input(\"Enter expression: \")\nprint(eval(code))\n\nWhat could go wrong?\n\nAnyway, the flag is: flag{never_use_eval}",
-                50,
-                "flag{never_use_eval}",
-                "Medium",
-                "The flag is in the description. In real challenges this would be a remote code execution challenge."
-            ),
-            (
-                "Base32 Encoding",
-                "Crypto",
-                "This time the message is encoded with Base32:\n\nMZXW6YTBONSXE43FOMQHI2DFON2GS4ZAMFRGG===\n\nDecode it.",
-                35,
-                "flag{base32_works_too}",
-                "Easy",
-                "Use CyberChef (From Base32) or Python: import base64; print(base64.b32decode('...'))"
-            ),
-            (
-                "URL Encoding",
-                "Web",
-                "Sometimes data is URL-encoded.\n\nDecode this:\n\nflag%7Burl_encoding_is_easy%7D",
-                25,
-                "flag{url_encoding_is_easy}",
-                "Easy",
-                "Use CyberChef (URL Decode) or any online URL decoder. %7B = { and %7D = }"
-            ),
-            (
-                "Morse Code",
-                "Crypto",
-                "Decode this Morse code:\n\n..-. .-.. .- --. { -- --- .-. ... . _ .. ... _ ..-. ..- -. }",
-                30,
-                "flag{morse_is_fun}",
-                "Easy",
-                "Use CyberChef or any online Morse code decoder. . = short, - = long"
-            ),
-            (
-                "Reverse Me",
-                "Misc",
-                "Someone wrote the flag backwards.\n\n}nuF_sI_esreveR{galf\n\nReverse it to get the real flag.",
-                20,
-                "flag{Reverse_Is_Fun}",
-                "Easy",
-                "Just reverse the string character by character."
-            ),
-            (
-                "ASCII Codes",
-                "Crypto",
-                "These are ASCII codes of the flag characters:\n\n102 108 97 103 123 97 115 99 105 105 95 99 111 100 101 115 125",
-                35,
-                "flag{ascii_codes}",
-                "Easy",
-                "Convert each number to its ASCII character. 102 = f, 108 = l, etc."
-            ),
-            (
-                "Password Strength",
-                "Misc",
-                "A weak password was used: password123\n\nBut the flag is not that.\n\nThe flag is: flag{strong_passwords_matter}",
-                15,
-                "flag{strong_passwords_matter}",
-                "Easy",
-                "Read the last line of the description."
-            ),
-            (
-                "JWT Intro",
-                "Web",
-                "JSON Web Tokens (JWT) are used for authentication.\n\nA JWT has 3 parts separated by dots: header.payload.signature\n\nHere is a sample JWT header (Base64):\n\neyJhbGciOiJub25lIn0\n\nDecode it. The flag is: flag{jwt_none_algorithm}",
-                45,
-                "flag{jwt_none_algorithm}",
-                "Medium",
-                "Decode the Base64 header. The 'none' algorithm is dangerous."
-            ),
-            (
-                "File Extension",
-                "Forensics",
-                "A file was renamed from .txt to .jpg to hide it.\n\nIn real life you would use the 'file' command or look at magic bytes.\n\nFor this challenge the flag is: flag{magic_bytes_matter}",
-                30,
-                "flag{magic_bytes_matter}",
-                "Easy",
-                "The flag is in the description. Real tip: never trust file extensions."
-            ),
-            (
-                "SQL Injection Intro",
-                "Web",
-                "A login form is vulnerable to SQL Injection.\n\nThe query looks like:\nSELECT * FROM users WHERE username = 'INPUT' AND password = 'INPUT'\n\nWhat if you enter: ' OR 1=1 --\n\nAnyway the flag for this intro is: flag{sqli_is_dangerous}",
-                50,
-                "flag{sqli_is_dangerous}",
-                "Medium",
-                "The flag is written in the description. Real SQLi can bypass logins."
-            ),
-            (
-                "Linux Basics",
-                "Misc",
-                "On Linux, the command to list files is 'ls'.\n\nThe command to print a file is 'cat'.\n\nThe flag is hidden in this sentence: flag{linux_commands_are_useful}",
-                20,
-                "flag{linux_commands_are_useful}",
-                "Easy",
-                "Just read the description carefully."
-            ),
-            (
-                "Base64 Double",
-                "Crypto",
-                "This message was Base64 encoded twice.\n\nWVhOa1lYTmtaV052Ym5SbGNqST0=\n\nDecode it twice to get the flag.",
-                40,
-                "flag{double_base64}",
-                "Medium",
-                "Decode once, then decode the result again with Base64."
-            ),
-            (
-                "Pigpen Cipher",
-                "Crypto",
-                "The Pigpen cipher uses symbols instead of letters.\n\nFor this beginner version we just tell you the flag:\n\nflag{pigpen_is_old_school}",
-                25,
-                "flag{pigpen_is_old_school}",
-                "Easy",
-                "The flag is written plainly. Real Pigpen looks like tic-tac-toe grids."
-            ),
-            (
-                "User-Agent",
-                "Web",
-                "Websites can see your User-Agent header (browser name).\n\nSometimes they show different content based on it.\n\nFor this challenge the flag is: flag{user_agent_matters}",
-                30,
-                "flag{user_agent_matters}",
-                "Easy",
-                "In real life you change User-Agent with browser extensions or curl -A"
-            ),
-            (
-                "Whitespace",
-                "Forensics",
-                "Sometimes flags are hidden with extra spaces or tabs.\n\nLook carefully between these words:\n\nflag { whitespace _ is _ sneaky }\n\nRemove the spaces to get: flag{whitespace_is_sneaky}",
-                35,
-                "flag{whitespace_is_sneaky}",
-                "Easy",
-                "Remove the spaces inside the curly braces."
-            ),
-            (
-                "Year of Python",
-                "OSINT",
-                "In which year was the first version of Python released?\n\nFormat the flag as: flag{YYYY}\n\nExample: flag{1990}",
-                30,
-                "flag{1991}",
-                "Easy",
-                "Google 'when was python first released' or 'python history'."
-            ),
-            (
-                "Atbash Cipher",
-                "Crypto",
-                "Atbash cipher reverses the alphabet (A↔Z, B↔Y, C↔X...).\n\nCiphertext: uozt{zgyzhs_xrkovi}\n\nDecode it.",
-                35,
-                "flag{atbash_cipher}",
-                "Easy",
-                "A becomes Z, B becomes Y, etc. Or use CyberChef Atbash."
-            ),
-            (
-                "Comment in Code",
-                "Misc",
-                "Developers often leave comments in code.\n\n# TODO: remove this before production\n# flag{check_the_comments}\n\nprint('Hello World')",
-                20,
-                "flag{check_the_comments}",
-                "Easy",
-                "Look at the comments in the code snippet."
-            ),
-            (
-                "HTTP Status",
-                "Web",
-                "HTTP status code 404 means 'Not Found'.\n\nStatus 200 means 'OK'.\n\nStatus 403 means 'Forbidden'.\n\nThe flag is: flag{know_your_status_codes}",
-                25,
-                "flag{know_your_status_codes}",
-                "Easy",
-                "The flag is in the description."
-            ),
-            (
-                "Final Boss",
-                "General",
-                "Congratulations on reaching the last challenge!\n\nYou have learned the basics of CTFs.\n\nYour final flag is: flag{you_are_ready_for_real_ctfs}",
-                100,
-                "flag{you_are_ready_for_real_ctfs}",
-                "Easy",
-                "Just submit the flag written above."
-            ),
+            # ==================== EASY (20) ====================
+            ("Welcome", "General",
+             "Welcome to the College CTF!\n\nThis is the only challenge where the flag is given.\n\nFlag: flag{welcome_to_the_real_ctf}",
+             10, "flag{welcome_to_the_real_ctf}", "Easy", "Just submit the flag written above."),
+
+            ("Base64 Decode", "Crypto",
+             "Decode this Base64 string to get the flag:\n\nZmxhZ3tiYXNlNjRfZGVjb2RlX3N1Y2Nlc3N9",
+             20, "flag{base64_decode_success}", "Easy", "Use CyberChef or any online Base64 decoder."),
+
+            ("Caesar Shift", "Crypto",
+             "The flag was encrypted with a Caesar cipher (shift of 3).\n\nCiphertext: iodj{fdhvdu_flskhu_hdv|}",
+             25, "flag{caesar_cipher_easy}", "Easy", "Shift each letter backwards by 3 positions."),
+
+            ("ROT13", "Crypto",
+             "Apply ROT13 to this text:\n\nsynt{ebg13_vf_rnfl}",
+             20, "flag{rot13_is_easy}", "Easy", "ROT13 shifts letters by 13 places. Use CyberChef or online ROT13 tool."),
+
+            ("Hex to Text", "Crypto",
+             "Convert this hexadecimal to text:\n\n666c61677b6865785f746f5f746578745f776f726b737d",
+             25, "flag{hex_to_text_works}", "Easy", "Use CyberChef (From Hex) or Python: bytes.fromhex('...').decode()"),
+
+            ("Binary Message", "Crypto",
+             "Convert this binary to ASCII:\n\n01100110 01101100 01100001 01100111 01111011 01100010 01101001 01101110 01100001 01110010 01111001 01011111 01100110 01110101 01101110 01111101",
+             30, "flag{binary_fun}", "Easy", "Use CyberChef (From Binary) or an online binary converter."),
+
+            ("Reverse It", "Misc",
+             "The flag is written backwards:\n\n}ysaE_esreveR{galf",
+             15, "flag{Reverse_Easy}", "Easy", "Just reverse the entire string."),
+
+            ("ASCII Numbers", "Crypto",
+             "These numbers are ASCII codes of the flag:\n\n102 108 97 103 123 97 115 99 105 105 95 110 117 109 98 101 114 115 125",
+             30, "flag{ascii_numbers}", "Easy", "Convert each number to its character (102 = f, 108 = l, etc)."),
+
+            ("URL Decode", "Web",
+             "Decode this URL-encoded string:\n\nflag%7Burl_decode_is_simple%7D",
+             20, "flag{url_decode_is_simple}", "Easy", "Use CyberChef (URL Decode) or any URL decoder."),
+
+            ("Morse Code", "Crypto",
+             "Decode this Morse code:\n\n..-. .-.. .- --. { -- --- .-. ... . _ -.-. --- -.. . }",
+             30, "flag{morse_code}", "Easy", "Use an online Morse code decoder."),
+
+            ("Atbash Cipher", "Crypto",
+             "Atbash reverses the alphabet (A↔Z, B↔Y...). Decode:\n\nuozt{zgyzhs_xrkovi}",
+             30, "flag{atbash_cipher}", "Easy", "A becomes Z, B becomes Y, etc. Or use CyberChef Atbash."),
+
+            ("Simple Math", "Misc",
+             "Solve: (15 * 4) + (100 / 5) - 7\n\nThe flag is flag{answer} where answer is the result.",
+             15, "flag{73}", "Easy", "Calculate the expression carefully."),
+
+            ("Hidden Spaces", "Forensics",
+             "There are extra spaces in this text. Remove them to get the flag:\n\nf l a g { n o _ s p a c e s }",
+             25, "flag{no_spaces}", "Easy", "Remove all spaces from the text."),
+
+            ("Year of Python", "OSINT",
+             "In which year was the first version of Python released?\n\nFlag format: flag{YYYY}",
+             25, "flag{1991}", "Easy", "Search on Google: 'when was python first released'"),
+
+            ("Creator of Linux", "OSINT",
+             "Who created the Linux kernel?\n\nFlag format: flag{firstname_lastname} (all lowercase)",
+             25, "flag{linus_torvalds}", "Easy", "Google 'who created linux'"),
+
+            ("Base32 Decode", "Crypto",
+             "Decode this Base32 string:\n\nMZXW6YTBONSXE43FOMQHI2DFON2GS4ZAMFRGG===",
+             30, "flag{base32_works_too}", "Easy", "Use CyberChef (From Base32)."),
+
+            ("Comment Finder", "Misc",
+             "Look at this Python code carefully:\n\nprint('Hello')\n# This is a normal comment\n# flag{check_comments_carefully}\nprint('World')",
+             20, "flag{check_comments_carefully}", "Easy", "Read the comments in the code."),
+
+            ("HTTP Status", "Web",
+             "What does HTTP status code 404 mean?\n\nFlag format: flag{not_found} (all lowercase with underscore)",
+             20, "flag{not_found}", "Easy", "Google 'HTTP status code 404'"),
+
+            ("Lowercase Me", "Misc",
+             "Convert this to lowercase to get the flag:\n\nFLAG{LOWERCASE_IS_IMPORTANT}",
+             10, "flag{lowercase_is_important}", "Easy", "Just make everything lowercase."),
+
+            ("Double Base64", "Crypto",
+             "This was Base64 encoded twice. Decode it twice:\n\nV2xOa1lYTmtaV052Ym5SbGNqST0=",
+             40, "flag{double_base64}", "Easy", "Decode once, then decode the result again."),
+
+            # ==================== MEDIUM (15) ====================
+            ("Caesar + Base64", "Crypto",
+             "The flag was first Caesar shifted by 5, then Base64 encoded.\n\nCiphertext: aG1mbHtqaGxmc2Jfa2F0c2J9",
+             70, "flag{caesar_base64}", "Medium", "First decode Base64, then shift letters back by 5."),
+
+            ("XOR Single Byte", "Crypto",
+             "This hex was XORed with a single byte key (try keys from 1 to 20):\n\n0a0d0a1d1b0c1a0b1c0d1b0a1d0c1b0a",
+             80, "flag{xor_is_cool}", "Medium", "XOR every byte with the same key. Look for readable text starting with 'flag{'."),
+
+            ("Rail Fence", "Crypto",
+             "This message was encrypted with Rail Fence cipher (3 rails):\n\nfa{alsnece}lgri_ee",
+             70, "flag{rail_fence}", "Medium", "Search for 'rail fence cipher decoder' and try 3 rails."),
+
+            ("Vigenere Easy", "Crypto",
+             "Encrypted with Vigenere cipher. Key = 'key'\n\nCiphertext: pldh{rmlirivi_iewc}",
+             90, "flag{vigenere_easy}", "Medium", "Use CyberChef Vigenere Decrypt with key 'key'."),
+
+            ("HTML Entities", "Web",
+             "Decode these HTML entities:\n\n&#102;&#108;&#97;&#103;&#123;&#104;&#116;&#109;&#108;&#95;&#101;&#110;&#116;&#105;&#116;&#105;&#101;&#115;&#125;",
+             60, "flag{html_entities}", "Medium", "Use CyberChef or an HTML entity decoder."),
+
+            ("Layered Encoding", "Crypto",
+             "The flag is hidden under multiple layers.\nFirst it was reversed, then Base64 encoded.\n\nCiphertext: fXNlY2FsX2RldmVyc2V7Z2FsZg==",
+             80, "flag{reversed_layers}", "Medium", "Decode Base64 first, then reverse the result."),
+
+            ("Keyboard Shift", "Misc",
+             "The flag was typed with fingers shifted one key to the right on a QWERTY keyboard.\n\nCiphertext: g;sh{jrtvphs_sodt}",
+             70, "flag{keyboard_shift}", "Medium", "On QWERTY, shift each key one position left."),
+
+            ("Pig Latin Style", "Misc",
+             "Each word was moved: first letter to the end + 'ay'.\n\nlagfay {igpay atinlay isay unfay}",
+             60, "flag{pig_latin_is_fun}", "Medium", "Move the last 'ay' and put the letter before it to the front of each word."),
+
+            ("Date Puzzle", "OSINT",
+             "The first public release of the World Wide Web was in which year?\n\nFlag format: flag{YYYY}",
+             60, "flag{1991}", "Medium", "Search for 'when was the world wide web released'"),
+
+            ("Simple Substitution", "Crypto",
+             "A=1, B=2, C=3... Z=26. The flag numbers are:\n\n6 12 1 7 27 19 21 2 19 20 9 20 21 20 9 15 14 28",
+             70, "flag{substitution}", "Medium", "Convert numbers back to letters. 27 = { and 28 = }"),
+
+            ("Base64 + ROT13", "Crypto",
+             "First ROT13, then Base64:\n\nc3ludHtoYmcyM19uYl9yYm9yZ30=",
+             75, "flag{base64_and_rot13}", "Medium", "Decode Base64 first, then apply ROT13."),
+
+            ("Phone Keypad", "Misc",
+             "On old phone keypads: 2=ABC, 3=DEF, 4=GHI, 5=JKL, 6=MNO, 7=PQRS, 8=TUV, 9=WXYZ\n\nThe flag is typed as: 3 5 2 4 { 7 4 6 6 3 5 2 9 7 2 3 }",
+             70, "flag{phone_keypad}", "Medium", "Map the numbers back to possible letters and find the meaningful flag."),
+
+            ("Leetspeak", "Misc",
+             "Decode this leetspeak:\n\nf14g{1337_5p34k_15_c00l}",
+             50, "flag{leet_speak_is_cool}", "Medium", "Replace numbers with similar looking letters (1=l/i, 3=e, 4=a, 5=s, 0=o, 7=t)."),
+
+            ("Whitespace Stego", "Forensics",
+             "The flag is hidden using only the visible text. Read carefully:\n\nThe secret is flag{look_carefully} right here.",
+             65, "flag{look_carefully}", "Medium", "Sometimes the flag is written in plain sight."),
+
+            ("MD5 Hint", "Crypto",
+             "I took MD5 of a common word. The hash starts with 5f4dcc3b...\n\nThe flag is flag{that_word}",
+             80, "flag{password}", "Medium", "Search for the beginning of the hash or try common passwords."),
+
+            # ==================== HARD (10) ====================
+            ("Triple Layer", "Crypto",
+             "The flag went through three steps:\n1. Reversed\n2. Caesar shift +4\n3. Base64\n\nFinal ciphertext: ZmhsaHt2eXNsaF9lbHBpcnQ=",
+             180, "flag{triple_layer}", "Hard", "Decode Base64 → shift back by 4 → reverse the string."),
+
+            ("XOR Repeating", "Crypto",
+             "XORed with the repeating key 'ctf'. Hex output:\n\n05001a1b0a160a0b1c0d0a1b0c0a1d",
+             200, "flag{xor_repeating}", "Hard", "XOR with repeating key 'ctf'. Use CyberChef or a small Python script."),
+
+            ("Custom Alphabet", "Crypto",
+             "Alphabet mapped as: a→q b→w c→e d→r e→t f→y g→u h→i i→o j→p k→a l→s m→d n→f o→g p→h q→j r→k s→l t→z u→x v→c w→v x→b y→n z→m\n\nCiphertext: ysqu{exlzgd_lxnlzozxzogf}",
+             160, "flag{custom_substitution}", "Hard", "Reverse the given mapping carefully."),
+
+            ("Brainfuck", "Misc",
+             "This is Brainfuck code. Interpret it to get the flag:\n\n++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.",
+             150, "flag{brainfuck}", "Hard", "Use an online Brainfuck interpreter."),
+
+            ("Tiny RSA", "Crypto",
+             "Tiny RSA. n = 33, e = 3, ciphertext c = 8\n\nDecrypt to get a number. Flag format: flag{number}",
+             220, "flag{2}", "Hard", "Find private exponent d, then m = c^d mod n."),
+
+            ("Multi Encoding", "Crypto",
+             "Flag was Base64 encoded, then the result was turned into hex.\n\nHex: 5a6d78685a334e6a62334e6c636d397562334e6a62334e6c636d3975",
+             170, "flag{multi_base}", "Hard", "Convert hex → text (you get Base64) → decode Base64."),
+
+            ("Keyboard Walk", "Misc",
+             "Someone walked on the QWERTY keyboard to type the flag.\nThe flag is flag{qwerty_walk}",
+             150, "flag{qwerty_walk}", "Hard", "The flag is given in the description this time as a special case."),
+
+            ("Hash Crack", "Crypto",
+             "MD5 of the flag starts with: 5f4dcc3b\nThe original word is a very common password.\nFlag format: flag{word}",
+             180, "flag{password}", "Hard", "The famous MD5 of 'password' starts with 5f4dcc3b."),
+
+            ("Double Reverse + Base64", "Crypto",
+             "Steps: reverse → Base64 → reverse again.\n\nFinal: ==gCNlJXZ2Vmcj9GauV2YpR3Y",
+             190, "flag{double_reverse}", "Hard", "Reverse the string → decode Base64 → reverse again."),
+
+            ("Final Boss", "General",
+             "You have reached the final challenge.\n\nThe flag is the first 8 characters of the MD5 of 'college_ctf_final' in the format flag{xxxxxxxx}",
+             250, "flag{8f4e3c2b}", "Hard", "Calculate MD5('college_ctf_final') and take the first 8 characters."),
         ]
 
         for c in challenges:
-            try:
-                db.execute(
-                    "INSERT INTO challenges (title, category, description, points, flag, difficulty, hint) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    c
-                )
-            except:
-                pass
-        db.commit()
+            execute(
+                "INSERT INTO challenges (title, category, description, points, flag, difficulty, hint) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                c
+            )
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -429,8 +351,7 @@ def admin_required(f):
         if "user_id" not in session:
             flash("Please login first.", "warning")
             return redirect(url_for("login"))
-        db = get_db()
-        user = db.execute("SELECT is_admin FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        user = execute("SELECT is_admin FROM users WHERE id = ?", (session["user_id"],), fetchone=True)
         if not user or not user["is_admin"]:
             flash("Admin access required.", "danger")
             return redirect(url_for("index"))
@@ -458,16 +379,14 @@ def register():
             flash("Username must be at least 3 characters.", "danger")
             return redirect(url_for("register"))
 
-        db = get_db()
         try:
-            db.execute(
+            execute(
                 "INSERT INTO users (username, password, created_at) VALUES (?, ?, ?)",
                 (username, hash_password(password), datetime.now().isoformat())
             )
-            db.commit()
             flash("Registration successful! Please login.", "success")
             return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
+        except Exception:
             flash("Username already exists.", "danger")
     return render_template("register.html")
 
@@ -476,11 +395,11 @@ def login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        db = get_db()
-        user = db.execute(
+        user = execute(
             "SELECT * FROM users WHERE username = ? AND password = ?",
-            (username, hash_password(password))
-        ).fetchone()
+            (username, hash_password(password)),
+            fetchone=True
+        )
         if user:
             session["user_id"] = user["id"]
             session["username"] = user["username"]
@@ -496,49 +415,80 @@ def logout():
     flash("Logged out successfully.", "info")
     return redirect(url_for("index"))
 
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new_pass = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if not current or not new_pass or not confirm:
+            flash("All fields are required.", "danger")
+            return redirect(url_for("change_password"))
+        if new_pass != confirm:
+            flash("New passwords do not match.", "danger")
+            return redirect(url_for("change_password"))
+        if len(new_pass) < 4:
+            flash("New password must be at least 4 characters.", "danger")
+            return redirect(url_for("change_password"))
+
+        user = execute("SELECT * FROM users WHERE id = ?", (session["user_id"],), fetchone=True)
+        if not user or user["password"] != hash_password(current):
+            flash("Current password is incorrect.", "danger")
+            return redirect(url_for("change_password"))
+
+        execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(new_pass), session["user_id"]))
+        flash("Password changed successfully!", "success")
+        return redirect(url_for("challenges"))
+    return render_template("change_password.html")
+
 @app.route("/challenges")
 @login_required
 def challenges():
-    db = get_db()
-    challenges = db.execute(
-        "SELECT * FROM challenges WHERE is_visible = 1 ORDER BY points ASC"
-    ).fetchall()
-
-    solved = db.execute(
-        "SELECT challenge_id FROM solves WHERE user_id = ?", (session["user_id"],)
-    ).fetchall()
-    solved_ids = {row["challenge_id"] for row in solved}
-
+    challenges = execute(
+        "SELECT * FROM challenges WHERE is_visible = 1 ORDER BY points ASC",
+        fetchall=True
+    )
+    solved = execute(
+        "SELECT challenge_id FROM solves WHERE user_id = ?",
+        (session["user_id"],),
+        fetchall=True
+    )
+    solved_ids = {row["challenge_id"] for row in solved} if solved else set()
     return render_template("challenges.html", challenges=challenges, solved_ids=solved_ids)
 
 @app.route("/challenge/<int:cid>", methods=["GET", "POST"])
 @login_required
 def challenge(cid):
-    db = get_db()
-    chall = db.execute("SELECT * FROM challenges WHERE id = ? AND is_visible = 1", (cid,)).fetchone()
+    chall = execute(
+        "SELECT * FROM challenges WHERE id = ? AND is_visible = 1",
+        (cid,),
+        fetchone=True
+    )
     if not chall:
         flash("Challenge not found.", "danger")
         return redirect(url_for("challenges"))
 
-    already_solved = db.execute(
+    already_solved = execute(
         "SELECT id FROM solves WHERE user_id = ? AND challenge_id = ?",
-        (session["user_id"], cid)
-    ).fetchone()
+        (session["user_id"], cid),
+        fetchone=True
+    )
 
     if request.method == "POST":
         submitted = request.form.get("flag", "").strip()
         if already_solved:
             flash("You already solved this challenge!", "info")
         elif submitted == chall["flag"]:
-            db.execute(
+            execute(
                 "INSERT INTO solves (user_id, challenge_id, solved_at) VALUES (?, ?, ?)",
                 (session["user_id"], cid, datetime.now().isoformat())
             )
-            db.execute(
+            execute(
                 "UPDATE users SET score = score + ? WHERE id = ?",
                 (chall["points"], session["user_id"])
             )
-            db.commit()
             flash(f"Correct! +{chall['points']} points", "success")
             return redirect(url_for("challenges"))
         else:
@@ -548,8 +498,7 @@ def challenge(cid):
 
 @app.route("/scoreboard")
 def scoreboard():
-    db = get_db()
-    users = db.execute(
+    users = execute(
         """
         SELECT username, score,
                (SELECT COUNT(*) FROM solves WHERE user_id = users.id) as solves
@@ -557,17 +506,17 @@ def scoreboard():
         WHERE is_admin = 0
         ORDER BY score DESC, solves DESC
         LIMIT 50
-        """
-    ).fetchall()
-    return render_template("scoreboard.html", users=users)
+        """,
+        fetchall=True
+    )
+    return render_template("scoreboard.html", users=users or [])
 
 @app.route("/admin")
 @admin_required
 def admin():
-    db = get_db()
-    challenges = db.execute("SELECT * FROM challenges ORDER BY id").fetchall()
-    users = db.execute("SELECT id, username, score, is_admin FROM users ORDER BY score DESC").fetchall()
-    return render_template("admin.html", challenges=challenges, users=users)
+    challenges = execute("SELECT * FROM challenges ORDER BY id", fetchall=True)
+    users = execute("SELECT id, username, score, is_admin FROM users ORDER BY score DESC", fetchall=True)
+    return render_template("admin.html", challenges=challenges or [], users=users or [])
 
 @app.route("/admin/add", methods=["GET", "POST"])
 @admin_required
@@ -585,21 +534,18 @@ def admin_add():
             flash("Title and flag are required.", "danger")
             return redirect(url_for("admin_add"))
 
-        db = get_db()
-        db.execute(
+        execute(
             "INSERT INTO challenges (title, category, description, points, flag, difficulty, hint) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (title, category, description, points, flag, difficulty, hint)
         )
-        db.commit()
         flash("Challenge added successfully!", "success")
         return redirect(url_for("admin"))
     return render_template("admin_add.html")
+
+with app.app_context():
+    init_db()
+
 if __name__ == "__main__":
-    if not os.path.exists(DATABASE):
-        init_db()
-    else:
-        init_db()
-    
     port = int(os.environ.get("PORT", 5000))
     print("=" * 50)
     print("  Beginner CTF Platform is running!")
