@@ -142,88 +142,186 @@ def init_db():
         execute("DELETE FROM challenges")
 
         challenges = [
-            ("Welcome", "General",
-             "Welcome to the College CTF!\n\nThis is the only challenge where the flag is given.\n\nFlag: flag{welcome_to_the_real_ctf}",
-             10, "flag{welcome_to_the_real_ctf}", "Easy", "Just submit the flag written above."),
-            ("Base64 Decode", "Crypto",
-             "Decode this Base64 string to get the flag:\n\nZmxhZ3tiYXNlNjRfZGVjb2RlX3N1Y2Nlc3N9",
-             20, "flag{base64_decode_success}", "Easy", "Use CyberChef or any online Base64 decoder."),
-            ("Caesar Shift", "Crypto",
-             "The flag was encrypted with a Caesar cipher (shift of 3).\n\nCiphertext: iodj{fdhvdu_flskhu_hdv|}",
-             25, "flag{caesar_cipher_easy}", "Easy", "Shift each letter backwards by 3 positions."),
-            ("ROT13", "Crypto",
-             "Apply ROT13 to this text:\n\nsynt{ebg13_vf_rnfl}",
-             20, "flag{rot13_is_easy}", "Easy", "ROT13 shifts letters by 13 places."),
-            ("Hex to Text", "Crypto",
-             "Convert this hexadecimal to text:\n\n666c61677b6865785f746f5f746578745f776f726b737d",
-             25, "flag{hex_to_text_works}", "Easy", "Use CyberChef (From Hex)."),
-            ("Binary Message", "Crypto",
-             "Convert this binary to ASCII:\n\n01100110 01101100 01100001 01100111 01111011 01100010 01101001 01101110 01100001 01110010 01111001 01011111 01100110 01110101 01101110 01111101",
-             30, "flag{binary_fun}", "Easy", "Use CyberChef (From Binary)."),
-            ("Reverse It", "Misc",
-             "The flag is written backwards:\n\n}ysaE_esreveR{galf",
-             15, "flag{Reverse_Easy}", "Easy", "Just reverse the entire string."),
-            ("ASCII Numbers", "Crypto",
-             "These numbers are ASCII codes of the flag:\n\n102 108 97 103 123 97 115 99 105 105 95 110 117 109 98 101 114 115 125",
-             30, "flag{ascii_numbers}", "Easy", "Convert each number to its character."),
-            ("URL Decode", "Web",
-             "Decode this URL-encoded string:\n\nflag%7Burl_decode_is_simple%7D",
-             20, "flag{url_decode_is_simple}", "Easy", "Use CyberChef (URL Decode)."),
-            ("Morse Code", "Crypto",
-             "Decode this Morse code:\n\n..-. .-.. .- --. { -- --- .-. ... . _ -.-. --- -.. . }",
-             30, "flag{morse_code}", "Easy", "Use an online Morse code decoder."),
-            ("Atbash Cipher", "Crypto",
-             "Atbash reverses the alphabet (A↔Z, B↔Y...). Decode:\n\nuozt{zgyzhs_xrkovi}",
-             30, "flag{atbash_cipher}", "Easy", "A becomes Z, B becomes Y, etc."),
-            ("Simple Math", "Misc",
-             "Solve: (15 * 4) + (100 / 5) - 7\n\nThe flag is flag{answer} where answer is the result.",
-             15, "flag{73}", "Easy", "Calculate the expression carefully."),
-            ("Hidden Spaces", "Forensics",
-             "There are extra spaces in this text. Remove them to get the flag:\n\nf l a g { n o _ s p a c e s }",
-             25, "flag{no_spaces}", "Easy", "Remove all spaces from the text."),
-            ("Year of Python", "OSINT",
-             "In which year was the first version of Python released?\n\nFlag format: flag{YYYY}",
-             25, "flag{1991}", "Easy", "Search: when was python first released"),
-            ("Creator of Linux", "OSINT",
-             "Who created the Linux kernel?\n\nFlag format: flag{firstname_lastname} (all lowercase)",
-             25, "flag{linus_torvalds}", "Easy", "Google 'who created linux'"),
-            ("Base32 Decode", "Crypto",
-             "Decode this Base32 string:\n\nMZXW6YTBONSXE43FOMQHI2DFON2GS4ZAMFRGG===",
-             30, "flag{base32_works_too}", "Easy", "Use CyberChef (From Base32)."),
-            ("Comment Finder", "Misc",
-             "Look at this Python code carefully:\n\nprint('Hello')\n# This is a normal comment\n# flag{check_comments_carefully}\nprint('World')",
-             20, "flag{check_comments_carefully}", "Easy", "Read the comments."),
-            ("HTTP Status", "Web",
-             "What does HTTP status code 404 mean?\n\nFlag format: flag{not_found}",
-             20, "flag{not_found}", "Easy", "Google HTTP status code 404"),
-            ("Lowercase Me", "Misc",
-             "Convert this to lowercase to get the flag:\n\nFLAG{LOWERCASE_IS_IMPORTANT}",
-             10, "flag{lowercase_is_important}", "Easy", "Make everything lowercase."),
-            ("Double Base64", "Crypto",
-             "This was Base64 encoded twice. Decode it twice:\n\nV2xOa1lYTmtaV052Ym5SbGNqST0=",
-             40, "flag{double_base64}", "Easy", "Decode once, then decode again."),
-            ("Caesar + Base64", "Crypto",
-             "The flag was first Caesar shifted by 5, then Base64 encoded.\n\nCiphertext: aG1mbHtqaGxmc2Jfa2F0c2J9",
-             70, "flag{caesar_base64}", "Medium", "Decode Base64, then shift back by 5."),
-            ("XOR Single Byte", "Crypto",
-             "This hex was XORed with a single byte key (try keys 1-20):\n\n0a0d0a1d1b0c1a0b1c0d1b0a1d0c1b0a",
-             80, "flag{xor_is_cool}", "Medium", "XOR every byte with the same key."),
-            ("Layered Encoding", "Crypto",
-             "First reversed, then Base64 encoded.\n\nCiphertext: fXNlY2FsX2RldmVyc2V7Z2FsZg==",
-             80, "flag{reversed_layers}", "Medium", "Decode Base64, then reverse."),
-            ("Base64 + ROT13", "Crypto",
-             "First ROT13, then Base64:\n\nc3ludHtoYmcyM19uYl9yYm9yZ30=",
-             75, "flag{base64_and_rot13}", "Medium", "Decode Base64, then ROT13."),
-            ("Leetspeak", "Misc",
-             "Decode this leetspeak:\n\nf14g{1337_5p34k_15_c00l}",
-             50, "flag{leet_speak_is_cool}", "Medium", "Replace numbers with letters."),
-            ("Triple Layer", "Crypto",
-             "Steps: reversed → Caesar +4 → Base64\n\nFinal: ZmhsaHt2eXNsaF9lbHBpcnQ=",
-             180, "flag{triple_layer}", "Hard", "Decode Base64 → shift -4 → reverse."),
-            ("Final Boss", "General",
-             "Congratulations!\n\nYour final flag is: flag{you_are_ready_for_real_ctfs}",
-             100, "flag{you_are_ready_for_real_ctfs}", "Easy", "Submit the flag above."),
-        ]
+    ("Welcome", "General",
+     "Welcome to the College CTF!\n\nThis is the only challenge where the flag is given.\n\nFlag: flag{welcome_to_the_real_ctf}",
+     10, "flag{welcome_to_the_real_ctf}", "Easy", "Just submit the flag written above."),
+
+    ("Base64 Decode", "Crypto",
+     "Decode this Base64 string to get the flag:\n\nZmxhZ3tiYXNlNjRfZGVjb2RlX3N1Y2Nlc3N9",
+     20, "flag{base64_decode_success}", "Easy", "Use CyberChef or any online Base64 decoder."),
+
+    ("Caesar Shift", "Crypto",
+     "The flag was encrypted with a Caesar cipher (shift of 3).\n\nCiphertext: iodj{fdhvdu_flskhu_hdv|}",
+     25, "flag{caesar_cipher_easy}", "Easy", "Shift each letter backwards by 3 positions."),
+
+    ("ROT13", "Crypto",
+     "Apply ROT13 to this text:\n\nsynt{ebg13_vf_rnfl}",
+     20, "flag{rot13_is_easy}", "Easy", "ROT13 shifts letters by 13 places. Use CyberChef or online ROT13 tool."),
+
+    ("Hex to Text", "Crypto",
+     "Convert this hexadecimal to text:\n\n666c61677b6865785f746f5f746578745f776f726b737d",
+     25, "flag{hex_to_text_works}", "Easy", "Use CyberChef (From Hex) or Python: bytes.fromhex('...').decode()"),
+
+    ("Binary Message", "Crypto",
+     "Convert this binary to ASCII:\n\n01100110 01101100 01100001 01100111 01111011 01100010 01101001 01101110 01100001 01110010 01111001 01011111 01100110 01110101 01101110 01111101",
+     30, "flag{binary_fun}", "Easy", "Use CyberChef (From Binary) or an online binary converter."),
+
+    ("Reverse It", "Misc",
+     "The flag is written backwards:\n\n}ysaE_esreveR{galf",
+     15, "flag{Reverse_Easy}", "Easy", "Just reverse the entire string."),
+
+    ("ASCII Numbers", "Crypto",
+     "These numbers are ASCII codes of the flag:\n\n102 108 97 103 123 97 115 99 105 105 95 110 117 109 98 101 114 115 125",
+     30, "flag{ascii_numbers}", "Easy", "Convert each number to its character (102 = f, 108 = l, etc)."),
+
+    ("URL Decode", "Web",
+     "Decode this URL-encoded string:\n\nflag%7Burl_decode_is_simple%7D",
+     20, "flag{url_decode_is_simple}", "Easy", "Use CyberChef (URL Decode) or any URL decoder."),
+
+    ("Morse Code", "Crypto",
+     "Decode this Morse code:\n\n..-. .-.. .- --. { -- --- .-. ... . _ -.-. --- -.. . }",
+     30, "flag{morse_code}", "Easy", "Use an online Morse code decoder."),
+
+    ("Atbash Cipher", "Crypto",
+     "Atbash reverses the alphabet (A↔Z, B↔Y...). Decode:\n\nuozt{zgyzhs_xrkovi}",
+     30, "flag{atbash_cipher}", "Easy", "A becomes Z, B becomes Y, etc. Or use CyberChef Atbash."),
+
+    ("Simple Math", "Misc",
+     "Solve: (15 * 4) + (100 / 5) - 7\n\nThe flag is flag{answer} where answer is the result.",
+     15, "flag{73}", "Easy", "Calculate the expression carefully."),
+
+    ("Hidden Spaces", "Forensics",
+     "There are extra spaces in this text. Remove them to get the flag:\n\nf l a g { n o _ s p a c e s }",
+     25, "flag{no_spaces}", "Easy", "Remove all spaces from the text."),
+
+    ("Year of Python", "OSINT",
+     "In which year was the first version of Python released?\n\nFlag format: flag{YYYY}",
+     25, "flag{1991}", "Easy", "Search on Google: 'when was python first released'"),
+
+    ("Creator of Linux", "OSINT",
+     "Who created the Linux kernel?\n\nFlag format: flag{firstname_lastname} (all lowercase)",
+     25, "flag{linus_torvalds}", "Easy", "Google 'who created linux'"),
+
+    ("Base32 Decode", "Crypto",
+     "Decode this Base32 string:\n\nMZXW6YTBONSXE43FOMQHI2DFON2GS4ZAMFRGG===",
+     30, "flag{base32_works_too}", "Easy", "Use CyberChef (From Base32)."),
+
+    ("Comment Finder", "Misc",
+     "Look at this Python code carefully:\n\nprint('Hello')\n# This is a normal comment\n# flag{check_comments_carefully}\nprint('World')",
+     20, "flag{check_comments_carefully}", "Easy", "Read the comments in the code."),
+
+    ("HTTP Status", "Web",
+     "What does HTTP status code 404 mean?\n\nFlag format: flag{not_found} (all lowercase with underscore)",
+     20, "flag{not_found}", "Easy", "Google 'HTTP status code 404'"),
+
+    ("Lowercase Me", "Misc",
+     "Convert this to lowercase to get the flag:\n\nFLAG{LOWERCASE_IS_IMPORTANT}",
+     10, "flag{lowercase_is_important}", "Easy", "Just make everything lowercase."),
+
+    ("Double Base64", "Crypto",
+     "This was Base64 encoded twice. Decode it twice:\n\nV2xOa1lYTmtaV052Ym5SbGNqST0=",
+     40, "flag{double_base64}", "Easy", "Decode once, then decode the result again."),
+
+    ("Caesar + Base64", "Crypto",
+     "The flag was first Caesar shifted by 5, then Base64 encoded.\n\nCiphertext: aG1mbHtqaGxmc2Jfa2F0c2J9",
+     70, "flag{caesar_base64}", "Medium", "First decode Base64, then shift letters back by 5."),
+
+    ("XOR Single Byte", "Crypto",
+     "This hex was XORed with a single byte key (try keys from 1 to 20):\n\n0a0d0a1d1b0c1a0b1c0d1b0a1d0c1b0a",
+     80, "flag{xor_is_cool}", "Medium", "XOR every byte with the same key. Look for readable text starting with 'flag{'."),
+
+    ("Rail Fence", "Crypto",
+     "This message was encrypted with Rail Fence cipher (3 rails):\n\nfa{alsnece}lgri_ee",
+     70, "flag{rail_fence}", "Medium", "Search for 'rail fence cipher decoder' and try 3 rails."),
+
+    ("Vigenere Easy", "Crypto",
+     "Encrypted with Vigenere cipher. Key = 'key'\n\nCiphertext: pldh{rmlirivi_iewc}",
+     90, "flag{vigenere_easy}", "Medium", "Use CyberChef Vigenere Decrypt with key 'key'."),
+
+    ("HTML Entities", "Web",
+     "Decode these HTML entities:\n\n&#102;&#108;&#97;&#103;&#123;&#104;&#116;&#109;&#108;&#95;&#101;&#110;&#116;&#105;&#116;&#105;&#101;&#115;&#125;",
+     60, "flag{html_entities}", "Medium", "Use CyberChef or an HTML entity decoder."),
+
+    ("Layered Encoding", "Crypto",
+     "The flag is hidden under multiple layers.\nFirst it was reversed, then Base64 encoded.\n\nCiphertext: fXNlY2FsX2RldmVyc2V7Z2FsZg==",
+     80, "flag{reversed_layers}", "Medium", "Decode Base64 first, then reverse the result."),
+
+    ("Keyboard Shift", "Misc",
+     "The flag was typed with fingers shifted one key to the right on a QWERTY keyboard.\n\nCiphertext: g;sh{jrtvphs_sodt}",
+     70, "flag{keyboard_shift}", "Medium", "On QWERTY, shift each key one position left."),
+
+    ("Pig Latin Style", "Misc",
+     "Each word was moved: first letter to the end + 'ay'.\n\nlagfay {igpay atinlay isay unfay}",
+     60, "flag{pig_latin_is_fun}", "Medium", "Move the last 'ay' and put the letter before it to the front of each word."),
+
+    ("Date Puzzle", "OSINT",
+     "The first public release of the World Wide Web was in which year?\n\nFlag format: flag{YYYY}",
+     60, "flag{1991}", "Medium", "Search for 'when was the world wide web released'"),
+
+    ("Simple Substitution", "Crypto",
+     "A=1, B=2, C=3... Z=26. The flag numbers are:\n\n6 12 1 7 27 19 21 2 19 20 9 20 21 20 9 15 14 28",
+     70, "flag{substitution}", "Medium", "Convert numbers back to letters. 27 = { and 28 = }"),
+
+    ("Base64 + ROT13", "Crypto",
+     "First ROT13, then Base64:\n\nc3ludHtoYmcyM19uYl9yYm9yZ30=",
+     75, "flag{base64_and_rot13}", "Medium", "Decode Base64 first, then apply ROT13."),
+
+    ("Phone Keypad", "Misc",
+     "On old phone keypads: 2=ABC, 3=DEF, 4=GHI, 5=JKL, 6=MNO, 7=PQRS, 8=TUV, 9=WXYZ\n\nThe flag is typed as: 3 5 2 4 { 7 4 6 6 3 5 2 9 7 2 3 }",
+     70, "flag{phone_keypad}", "Medium", "Map the numbers back to possible letters and find the meaningful flag."),
+
+    ("Leetspeak", "Misc",
+     "Decode this leetspeak:\n\nf14g{1337_5p34k_15_c00l}",
+     50, "flag{leet_speak_is_cool}", "Medium", "Replace numbers with similar looking letters (1=l/i, 3=e, 4=a, 5=s, 0=o, 7=t)."),
+
+    ("Whitespace Stego", "Forensics",
+     "The flag is hidden using only the visible text. Read carefully:\n\nThe secret is flag{look_carefully} right here.",
+     65, "flag{look_carefully}", "Medium", "Sometimes the flag is written in plain sight."),
+
+    ("MD5 Hint", "Crypto",
+     "I took MD5 of a common word. The hash starts with 5f4dcc3b...\n\nThe flag is flag{that_word}",
+     80, "flag{password}", "Medium", "Search for the beginning of the hash or try common passwords."),
+
+    ("Triple Layer", "Crypto",
+     "The flag went through three steps:\n1. Reversed\n2. Caesar shift +4\n3. Base64\n\nFinal ciphertext: ZmhsaHt2eXNsaF9lbHBpcnQ=",
+     180, "flag{triple_layer}", "Hard", "Decode Base64 → shift back by 4 → reverse the string."),
+
+    ("XOR Repeating", "Crypto",
+     "XORed with the repeating key 'ctf'. Hex output:\n\n05001a1b0a160a0b1c0d0a1b0c0a1d",
+     200, "flag{xor_repeating}", "Hard", "XOR with repeating key 'ctf'. Use CyberChef or a small Python script."),
+
+    ("Custom Alphabet", "Crypto",
+     "Alphabet mapped as: a→q b→w c→e d→r e→t f→y g→u h→i i→o j→p k→a l→s m→d n→f o→g p→h q→j r→k s→l t→z u→x v→c w→v x→b y→n z→m\n\nCiphertext: ysqu{exlzgd_lxnlzozxzogf}",
+     160, "flag{custom_substitution}", "Hard", "Reverse the given mapping carefully."),
+
+    ("Brainfuck", "Misc",
+     "This is Brainfuck code. Interpret it to get the flag:\n\n++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.",
+     150, "flag{brainfuck}", "Hard", "Use an online Brainfuck interpreter."),
+
+    ("Tiny RSA", "Crypto",
+     "Tiny RSA. n = 33, e = 3, ciphertext c = 8\n\nDecrypt to get a number. Flag format: flag{number}",
+     220, "flag{2}", "Hard", "Find private exponent d, then m = c^d mod n."),
+
+    ("Multi Encoding", "Crypto",
+     "Flag was Base64 encoded, then the result was turned into hex.\n\nHex: 5a6d78685a334e6a62334e6c636d397562334e6a62334e6c636d3975",
+     170, "flag{multi_base}", "Hard", "Convert hex → text (you get Base64) → decode Base64."),
+
+    ("Keyboard Walk", "Misc",
+     "Someone walked on the QWERTY keyboard to type the flag.\nThe flag is flag{qwerty_walk}",
+     150, "flag{qwerty_walk}", "Hard", "The flag is given in the description this time as a special case."),
+
+    ("Hash Crack", "Crypto",
+     "MD5 of the flag starts with: 5f4dcc3b\nThe original word is a very common password.\nFlag format: flag{word}",
+     180, "flag{password}", "Hard", "The famous MD5 of 'password' starts with 5f4dcc3b."),
+
+    ("Double Reverse + Base64", "Crypto",
+     "Steps: reverse → Base64 → reverse again.\n\nFinal: ==gCNlJXZ2Vmcj9GauV2YpR3Y",
+     190, "flag{double_reverse}", "Hard", "Reverse the string → decode Base64 → reverse again."),
+
+    ("Final Boss", "General",
+     "You have reached the final challenge.\n\nThe flag is the first 8 characters of the MD5 of 'college_ctf_final' in the format flag{xxxxxxxx}",
+     250, "flag{8f4e3c2b}", "Hard", "Calculate MD5('college_ctf_final') and take the first 8 characters."),
+]
 
         for c in challenges:
             execute(
