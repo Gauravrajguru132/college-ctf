@@ -99,17 +99,14 @@
             <div class="collapse navbar-collapse" id="nav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('challenges') }}"><li class="nav-item">
-    <a class="nav-link" href="{{ url_for('challenges') }}">Challenges</a>
-</li>
-{% if session.get('is_admin') %}
-<li class="nav-item">
-    <a class="nav-link" href="{{ url_for('scoreboard') }}">Scoreboard</a>
-</li>
-<li class="nav-item">
-    <a class="nav-link text-warning" href="{{ url_for('admin') }}">Admin</a>
-</li>
-{% endif %}
+                        <a class="nav-link" href="{{ url_for('challenges') }}">Challenges</a>
+                    </li>
+                    {% if session.get('is_admin') %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('scoreboard') }}">Scoreboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-warning" href="{{ url_for('admin') }}">Admin</a>
                     </li>
                     {% endif %}
                 </ul>
@@ -119,6 +116,9 @@
                         <span class="nav-link text-info">
                             <i class="bi bi-person-circle"></i> {{ session.username }}
                         </span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('change_password') }}">Change Password</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
