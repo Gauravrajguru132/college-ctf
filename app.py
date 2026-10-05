@@ -464,6 +464,7 @@ def challenge(cid):
     return render_template("challenge.html", chall=chall, already_solved=bool(already_solved))
 
 @app.route("/scoreboard")
+@admin_required
 def scoreboard():
     users = execute("""
         SELECT username, score,
@@ -508,6 +509,6 @@ if __name__ == "__main__":
     print("=" * 50)
     print("  Beginner CTF Platform is running!")
     print(f"  Port: {port}")
-    print("  Admin login → username: admin  password: admin123")
+    print("  Admin login → username: admin  password: Certified@132")
     print("=" * 50)
     app.run(host="0.0.0.0", port=port)
